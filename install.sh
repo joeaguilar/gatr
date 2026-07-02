@@ -18,6 +18,11 @@ set -euo pipefail
 REPO="${GATR_REPO:-joeaguilar/gatr}"
 BIN="gatr"
 
+# Cleaned up on exit; must be global — a `local` would be out of scope (and
+# unbound under `set -u`) by the time the EXIT trap fires.
+TMP_DIR=""
+trap '[ -n "$TMP_DIR" ] && rm -rf "$TMP_DIR"' EXIT
+
 usage() {
     sed -n '4,15p' "$0" | sed 's/^# \{0,1\}//'
     exit 0
@@ -131,29 +136,28 @@ install_from_source() {
 }
 
 install_from_release() {
-    local target tag asset base tmp
+    local target tag asset base
     target="$(detect_target)"
     tag="$(resolve_version)"
     [ -n "$tag" ] || { log "could not resolve latest release; falling back to source build"; install_from_source; return; }
     base="${BIN}-${tag}-${target}"
     asset="https://github.com/${REPO}/releases/download/${tag}/${base}.tar.gz"
-    tmp="$(mktemp -d)"
-    trap 'rm -rf "$tmp"' EXIT
+    TMP_DIR="$(mktemp -d)"
     log "downloading ${base}.tar.gz ..."
-    if ! fetch "$asset" "$tmp/${base}.tar.gz"; then
+    if ! fetch "$asset" "$TMP_DIR/${base}.tar.gz"; then
         log "download failed; falling back to source build"
         install_from_source
         return
     fi
-    if fetch "${asset}.sha256" "$tmp/${base}.tar.gz.sha256"; then
-        (cd "$tmp" && { sha256sum -c "${base}.tar.gz.sha256" 2>/dev/null || shasum -a 256 -c "${base}.tar.gz.sha256"; }) \
+    if fetch "${asset}.sha256" "$TMP_DIR/${base}.tar.gz.sha256"; then
+        (cd "$TMP_DIR" && { sha256sum -c "${base}.tar.gz.sha256" 2>/dev/null || shasum -a 256 -c "${base}.tar.gz.sha256"; }) \
             || die "checksum verification failed"
     else
         log "WARNING: no checksum file published for $tag; skipping verification"
     fi
-    tar xzf "$tmp/${base}.tar.gz" -C "$tmp"
-    [ -f "$tmp/$base/$BIN" ] || die "archive did not contain $BIN"
-    install_binary "$tmp/$base/$BIN"
+    tar xzf "$TMP_DIR/${base}.tar.gz" -C "$TMP_DIR"
+    [ -f "$TMP_DIR/$base/$BIN" ] || die "archive did not contain $BIN"
+    install_binary "$TMP_DIR/$base/$BIN"
 }
 
 if [ "${GATR_FROM_SOURCE:-0}" = "1" ]; then
