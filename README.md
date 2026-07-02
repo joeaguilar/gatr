@@ -1,5 +1,8 @@
 # gatr — GATe Runner
 
+[![CI](https://github.com/joeaguilar/gatr/actions/workflows/ci.yml/badge.svg)](https://github.com/joeaguilar/gatr/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/joeaguilar/gatr)](https://github.com/joeaguilar/gatr/releases/latest)
+
 Run a verification command once, keep the **full** log on disk, and print a
 **compact, machine-stable summary** — so an agent (or a human) never pipes
 build output through ad-hoc `tail`/`grep` again, and never loses the full log
