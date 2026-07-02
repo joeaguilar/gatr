@@ -1,0 +1,50 @@
+[package]
+# version is intentionally pinned at 0.1.0 — the real version comes from git
+# tags via build.rs (GATR_VERSION); this field is only a fallback for source
+# builds without git metadata.
+name = "gatr"
+version = "0.1.0"
+edition = "2021"
+description = "GATe Runner — run a verification gate once, keep the full log, print a compact machine-stable summary"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+clap = { version = "4", features = ["derive"] }
+os_pipe = "1"
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+uninlined_format_args = "allow"
+too_many_lines = "allow"
+needless_pass_by_value = "allow"
+single_match_else = "allow"
+match_same_arms = "allow"
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+format_push_string = "allow"
+similar_names = "allow"
+dbg_macro = "deny"
