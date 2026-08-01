@@ -76,6 +76,13 @@ $url = "https://github.com/$Repo/releases/download/$tag/$base.zip"
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
 New-Item -ItemType Directory -Path $tmp | Out-Null
 
+# Rendering the progress bar throttles Invoke-WebRequest badly on Windows
+# PowerShell 5.1, so suppress it for the transfer. The caller's value is
+# restored below: `irm | iex` runs this in the user's own session, and leaving
+# progress disabled there would be a surprising side effect.
+$prevProgress = $ProgressPreference
+$ProgressPreference = 'SilentlyContinue'
+
 try {
     Write-Host "downloading $base.zip ..."
     Invoke-WebRequest -Uri $url -OutFile (Join-Path $tmp "$base.zip") -UseBasicParsing
@@ -131,5 +138,6 @@ try {
 
     & (Join-Path $installDir 'gatr.exe') --version
 } finally {
+    $ProgressPreference = $prevProgress
     Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
 }
