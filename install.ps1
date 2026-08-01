@@ -6,7 +6,9 @@
 #
 # Environment overrides:
 #   GATR_VERSION      pin a release tag (default: latest)
-#   GATR_INSTALL_DIR  install directory override (default: %USERPROFILE%\.cargo\bin or %LOCALAPPDATA%\gatr\bin)
+#   GATR_INSTALL_DIR  install directory override (default: the directory of an
+#                     existing gatr on PATH, else %USERPROFILE%\.cargo\bin,
+#                     else %LOCALAPPDATA%\Programs\gatr)
 #   GATR_REPO         GitHub repo (default: joeaguilar/gatr)
 
 $ErrorActionPreference = 'Stop'
@@ -17,6 +19,40 @@ try {
     [Net.ServicePointManager]::SecurityProtocol =
         [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 } catch { }
+
+function Get-PathEntries {
+    param([string]$Scope)
+    $v = [Environment]::GetEnvironmentVariable('Path', $Scope)
+    if (-not $v) { return @() }
+    return @($v -split ';' | Where-Object { $_ -ne '' })
+}
+
+# Compare against both User and Machine PATH so a dir already installed
+# system-wide is not duplicated into the user scope.
+function Test-OnPersistentPath {
+    param([string]$Dir)
+    $target = $Dir.TrimEnd('\')
+    foreach ($e in (@(Get-PathEntries 'User') + @(Get-PathEntries 'Machine'))) {
+        if ($e.TrimEnd('\') -ieq $target) { return $true }
+    }
+    return $false
+}
+
+function Add-ToUserPath {
+    param([string]$Dir)
+    if (Test-OnPersistentPath $Dir) { return $false }
+    [Environment]::SetEnvironmentVariable(
+        'Path', ((@($Dir) + (Get-PathEntries 'User')) -join ';'), 'User')
+    return $true
+}
+
+function Get-ExistingGatrDir {
+    $cmd = Get-Command gatr.exe -ErrorAction SilentlyContinue
+    if ($cmd -and $cmd.Path -and (Test-Path $cmd.Path)) {
+        return (Split-Path -Parent $cmd.Path)
+    }
+    return $null
+}
 
 $Repo = if ($env:GATR_REPO) { $env:GATR_REPO } else { 'joeaguilar/gatr' }
 
@@ -68,17 +104,31 @@ try {
 
     $installDir = $env:GATR_INSTALL_DIR
     if (-not $installDir) {
-        $cargoBin = Join-Path $env:USERPROFILE '.cargo\bin'
-        $installDir = if (Test-Path $cargoBin) { $cargoBin } else { Join-Path $env:LOCALAPPDATA 'gatr\bin' }
+        # Replace whatever gatr the shell already resolves, so a repeat install
+        # never leaves a second copy shadowing the first.
+        $installDir = Get-ExistingGatrDir
     }
+    if (-not $installDir) {
+        # ~/.cargo/bin is already on PATH for Rust users; everyone else gets the
+        # same %LOCALAPPDATA%\Programs\<tool> layout as the rest of the fleet.
+        $cargoBin = Join-Path $env:USERPROFILE '.cargo\bin'
+        $installDir = if (Test-Path $cargoBin) { $cargoBin } else { Join-Path $env:LOCALAPPDATA 'Programs\gatr' }
+    }
+    $installDir = [Environment]::ExpandEnvironmentVariables($installDir)
+
     New-Item -ItemType Directory -Force -Path $installDir | Out-Null
     Copy-Item (Join-Path $tmp "$base\gatr.exe") -Destination (Join-Path $installDir 'gatr.exe') -Force
 
     Write-Host "installed gatr to $installDir\gatr.exe"
-    if (($env:Path -split ';') -notcontains $installDir) {
-        Write-Warning "$installDir is not on PATH - add it via System Settings or:"
-        Write-Warning "  [Environment]::SetEnvironmentVariable('Path', `$env:Path + ';$installDir', 'User')"
+
+    if (Add-ToUserPath $installDir) {
+        Write-Host "added $installDir to your User PATH (restart your shell to pick it up)"
     }
+    # Make gatr resolvable for the rest of this session too.
+    if (($env:Path -split ';') -notcontains $installDir) {
+        $env:Path = "$installDir;$env:Path"
+    }
+
     & (Join-Path $installDir 'gatr.exe') --version
 } finally {
     Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
