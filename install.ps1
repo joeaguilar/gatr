@@ -11,6 +11,13 @@
 
 $ErrorActionPreference = 'Stop'
 
+# Windows PowerShell 5.1 still negotiates TLS 1.0 on some hosts and GitHub
+# requires 1.2+. No-op on PowerShell 7+, which already defaults higher.
+try {
+    [Net.ServicePointManager]::SecurityProtocol =
+        [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+} catch { }
+
 $Repo = if ($env:GATR_REPO) { $env:GATR_REPO } else { 'joeaguilar/gatr' }
 
 $arch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') {
@@ -35,16 +42,26 @@ New-Item -ItemType Directory -Path $tmp | Out-Null
 
 try {
     Write-Host "downloading $base.zip ..."
-    Invoke-WebRequest -Uri $url -OutFile (Join-Path $tmp "$base.zip")
+    Invoke-WebRequest -Uri $url -OutFile (Join-Path $tmp "$base.zip") -UseBasicParsing
 
-    # Verify checksum when published.
+    # Verify checksum when published. The fetch and the comparison live in
+    # separate blocks on purpose: a typed catch here would miss PowerShell 7's
+    # HttpResponseException (5.1 raises WebException), and a broad catch around
+    # the comparison would silently swallow a genuine mismatch.
+    $sumPath = Join-Path $tmp "$base.zip.sha256"
+    $hasChecksum = $true
     try {
-        Invoke-WebRequest -Uri "$url.sha256" -OutFile (Join-Path $tmp "$base.zip.sha256")
-        $expected = (Get-Content (Join-Path $tmp "$base.zip.sha256")).Split(' ')[0].Trim().ToLower()
+        Invoke-WebRequest -Uri "$url.sha256" -OutFile $sumPath -UseBasicParsing
+    } catch {
+        $hasChecksum = $false
+        Write-Warning 'no checksum file published; skipping verification'
+    }
+
+    if ($hasChecksum) {
+        $expected = (Get-Content $sumPath).Split(' ')[0].Trim().ToLower()
         $actual = (Get-FileHash -Algorithm SHA256 (Join-Path $tmp "$base.zip")).Hash.ToLower()
         if ($expected -ne $actual) { throw "checksum mismatch: expected $expected, got $actual" }
-    } catch [System.Net.WebException] {
-        Write-Warning 'no checksum file published; skipping verification'
+        Write-Host 'checksum verified'
     }
 
     Expand-Archive -Path (Join-Path $tmp "$base.zip") -DestinationPath $tmp
@@ -59,7 +76,7 @@ try {
 
     Write-Host "installed gatr to $installDir\gatr.exe"
     if (($env:Path -split ';') -notcontains $installDir) {
-        Write-Warning "$installDir is not on PATH — add it via System Settings or:"
+        Write-Warning "$installDir is not on PATH - add it via System Settings or:"
         Write-Warning "  [Environment]::SetEnvironmentVariable('Path', `$env:Path + ';$installDir', 'User')"
     }
     & (Join-Path $installDir 'gatr.exe') --version
