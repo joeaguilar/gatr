@@ -3,7 +3,7 @@
 # tags via build.rs (GATR_VERSION); this field is only a fallback for source
 # builds without git metadata.
 name = "gatr"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "GATe Runner — run a verification gate once, keep the full log, print a compact machine-stable summary"
 license = "MIT"
