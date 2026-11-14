@@ -1,0 +1,8 @@
+# Catalog manifest, read by ../_catalog/catalog.py. Draft: correct anything that is wrong.
+name = "gatr"
+title = "gatr"
+kind = "tool"
+stack = ["rust"]
+status = "active"
+summary = "GATe Runner: run a verification gate once, keep the full log, print a compact summary."
+run = "gatr --help"
